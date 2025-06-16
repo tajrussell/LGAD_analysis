@@ -12,56 +12,8 @@ dc_data_dirs_3045 = ["W3045/Sep212023", "W3045/Sep252023", "W3045/Sep262023", "W
 data_dirs = ac_data_dirs + dc_data_dirs_3058 + dc_data_dirs_3045
 test_data_dirs = ["Dec112024", "W3058/Nov012023", "W3045/Sep252023"]
 
-hard_coded_idx = {  'base_i': {-40: -5,
-                             -20: 30,
-                             0: 10,
-                             20: 10,
-                             40: 10,
-                             60: 12,
-                             80: 12,
-                             100: 11,
-                             120: 12},
-                    'base_j': {-40: -2,
-                             -20: -10,
-                             0: -10,
-                             20: -24,
-                             40: -25,
-                             60: -24,
-                             80: -36,
-                             100: -24,
-                             120: -37},
-                    'bd_i': {-40: -3,
-                             -20: -3,
-                             0: -3,
-                             20: -3,
-                             40: -3,
-                             60: -4,
-                             80: -5,
-                             100: -5,
-                             120: -5},
-                    'bd_j': {-40: -1,
-                             -20: -1,
-                             0: -1,
-                             20: None,
-                             40: -1,
-                             60: None,
-                             80: -1,
-                             100: -1,
-                             120: -1}
-                    }
-
 def linear(x, m, b):
     return m*x + b
-
-def exponential(x, m, a, b, c):
-    return m*x + b + a * np.exp(np.clip(c*x, -700, 700))
-
-alt_m, alt_b = 0, 0
-def fixed_exponential(x, a, c):
-    return alt_m*x + alt_b + a * np.exp(np.clip(c*x, -700, 700))
-
-def power(x, m, a, b, c):
-    return m*x + b + a * np.power(x, c)
 
 def linear_fit(x_data, y_data, p0, sigmas=None):
     if sigmas is None: 
@@ -73,20 +25,6 @@ def linear_fit(x_data, y_data, p0, sigmas=None):
     r_squared = 1 - (residual**2 / ss_tot)
     return popt, perr, residual, r_squared
 
-def exponential_fit(x_data, y_data, p0):
-    popt, pconv = curve_fit(exponential, xdata = x_data , ydata = y_data, p0=p0)
-    perr= np.sqrt(np.diag(pconv))
-    return popt, perr
-
-def fixed_exponential_fit(x_data, y_data, p0):
-    popt, pconv = curve_fit(fixed_exponential, xdata = x_data , ydata = y_data, p0=p0)
-    perr= np.sqrt(np.diag(pconv))
-    return popt, perr
-
-def power_fit(x_data, y_data, p0):
-    popt, pconv = curve_fit(power, xdata = x_data , ydata = y_data, p0=p0, method='trf')
-    perr= np.sqrt(np.diag(pconv))
-    return popt, perr
 
 def fit_breakdown(xs, ys, start_idx, fixed_end, max_res, dist_file=None, bd_thresh=0.5):
     results = {'random': {'color': 'black'}}
