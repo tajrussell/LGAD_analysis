@@ -6,11 +6,11 @@ import shutil
 import random
 # Directory containing the data files
 
-ac_data_dirs = ["Nov272024", "Dec42024", "Dec52024", "Dec62024", "Dec92024", "Dec122024", "Dec112024"]
-dc_data_dirs_3058 = ["W3058/Oct252023", "W3058/Oct262023", "W3058/Oct272023", "W3058/Oct302023", "W3058/Oct312023", "W3058/Nov012023", "W3058/Nov022023", "W3058/Nov032023"]
-dc_data_dirs_3045 = ["W3045/Sep212023", "W3045/Sep252023", "W3045/Sep262023", "W3045/Sep282023", "W3045/Oct022023"]
+ac_data_dirs = ["AC_W3096/Nov272024", "AC_W3096/Dec42024", "AC_W3096/Dec52024", "AC_W3096/Dec62024", "AC_W3096/Dec92024", "AC_W3096/Dec122024", "AC_W3096/Dec112024"]
+dc_data_dirs_3058 = ["DC_W3058/Oct252023", "DC_W3058/Oct262023", "DC_W3058/Oct272023", "DC_W3058/Oct302023", "DC_W3058/Oct312023", "DC_W3058/Nov012023", "DC_W3058/Nov022023", "DC_W3058/Nov032023"]
+dc_data_dirs_3045 = ["DC_W3045/Sep212023", "DC_W3045/Sep252023", "DC_W3045/Sep262023", "DC_W3045/Sep282023", "DC_W3045/Oct022023"]
 data_dirs = ac_data_dirs + dc_data_dirs_3058 + dc_data_dirs_3045
-test_data_dirs = ["Dec112024", "W3058/Nov012023", "W3045/Sep252023"]
+test_data_dirs = ["AC_W3096/Dec112024", "DC_W3058/Nov012023", "DC_W3045/Sep252023"]
 
 def linear(x, m, b):
     return m*x + b
@@ -26,22 +26,26 @@ def linear_fit(x_data, y_data, p0, sigmas=None):
     return popt, perr, residual, r_squared
 
 
-def fit_breakdown(xs, ys, start_idx, fixed_end, max_res, dist_file=None, bd_thresh=0.5):
+def fit_breakdown(xs, ys, start_idx, dist_file=None, bd_thresh=0.5):
+    # set up data structures
     results = {'random': {'color': 'black'}}
     rand_len = 100
     breakdown_vals = np.zeros(rand_len)
     pop0s = np.zeros(rand_len)
     pop1s = np.zeros(rand_len)
+    # calculate linear fit for full range
     fit_range = int((len(xs)-start_idx)*0.5)
     fixed_popt, _, _, _ = linear_fit(xs[start_idx:start_idx+fit_range], ys[start_idx:start_idx+fit_range], p0=[1, -100])
     liny_vals = linear(xs[start_idx:], fixed_popt[0], fixed_popt[1])
     pop0s[0] = fixed_popt[0]
     pop1s[0] = fixed_popt[1]
+    # calculate breakdown voltage
     for i, liny in enumerate(liny_vals):
             if abs(ys[i+start_idx] - liny) < bd_thresh:
                 breakdown_vals[0] = xs[i+start_idx]
+    # repeat rand_len times to use width for uncertainty calculation
     for rand_i in range(1, rand_len):
-        indices = random.sample(range(start_idx, start_idx+fit_range), fit_range//2)
+        indices = random.sample(range(start_idx, start_idx+fit_range), fit_range//2) # sample half the data
         fixed_popt, _, _, _ = linear_fit(xs[indices], ys[indices], p0=[1, -100])
         liny_vals = linear(xs[start_idx:], fixed_popt[0], fixed_popt[1])
         pop0s[rand_i] = fixed_popt[0]
@@ -49,26 +53,27 @@ def fit_breakdown(xs, ys, start_idx, fixed_end, max_res, dist_file=None, bd_thre
         for i, liny in enumerate(liny_vals):
             if abs(ys[i+start_idx] - liny) < bd_thresh:
                 breakdown_vals[rand_i] = xs[i+start_idx]
-    #bd_hist, edges = np.histogram(breakdown_vals)
+    # plot breakdown distribution
     plt.figure()
     plt.hist(breakdown_vals, histtype='step', bins=20)
     plt.ylabel('Frequency')
     plt.xlabel('Breakdown Voltage')
-    plt.title('Breakdown Votlage Distribution From Random Ranges')
+    plt.title('Breakdown Voltage Distribution From Random Ranges')
     plt.tight_layout()
     plt.savefig(dist_file)
     plt.clf()
+    # saving breakdown and plotting information
     results['random']['x'] = xs[start_idx:]
     results['random']['y'] = linear(results['random']['x'], pop0s[0], pop1s[0])
-    results['random']['bd'] = breakdown_vals[0]
-    results['random']['bderr'] = max(np.std(breakdown_vals), 0.34)
+    results['random']['bd'] = breakdown_vals[0] # breakdown voltage
+    results['random']['bderr'] = max(np.std(breakdown_vals), 0.34) # breakdown uncertainty
     #print('breakdown at', int(results['random']['bd']), '+/-', float(int(results['random']['bderr']*1000))/1000)
-    results['random']['bdi'] = len(xs)-start_idx-1
+    results['random']['bdi'] = len(xs)-start_idx-1 # index of breakdown
     for i, x in enumerate(xs[start_idx:]):
         if x > results['random']['bd']:
             results['random']['bdi'] = i
             break
-    
+    # keep plotting information for 10 of the random fits (100 would make plot look bad)
     for rand_i in range(10):
         results['random'+str(rand_i)] = dict()
         results['random'+str(rand_i)]['x'] = results['random']['x']
@@ -77,10 +82,9 @@ def fit_breakdown(xs, ys, start_idx, fixed_end, max_res, dist_file=None, bd_thre
         results['random'+str(rand_i)]['bderr'] = 2
         results['random'+str(rand_i)]['bdi'] = len(xs)-start_idx-1
         for i, x in enumerate(xs[start_idx:]):
-            if x > results['random']['bd']:
+            if x > results['random'+str(rand_i)]['bd']:
                 results['random'+str(rand_i)]['bdi'] = i
                 break
-
     return results
 
 # Function to parse the metadata and data from a file
@@ -88,7 +92,7 @@ def parse_file(filepath):
     with open(filepath, 'r') as f:
         lines = f.readlines()
     # Extract metadata
-    if 'W' in filepath: temperature = float(lines[0].split(': ')[1].split(' ')[0])
+    if 'DC' in filepath: temperature = float(lines[0].split(': ')[1].split(' ')[0])
     else: temperature = float(lines[0].split(':')[1].strip().replace(" C", ""))
     date = lines[2].split(':', 1)[1].strip().split(' ')[0]
     # Extract table data
@@ -106,7 +110,7 @@ def humidity_to_color(rh):
     norm_rh = (rh - min_rh) / (max_rh - min_rh)
     return plt.cm.rainbow(norm_rh)
 
-def plot_scans(data_dir, curr_type, max_res=0.01, min_temp=0, bd_thresh=0.5):
+def plot_scans(data_dir, curr_type, min_temp=0, bd_thresh=0.5):
     file_groups = {"ru_": [], "rd_": []}
     for filename in os.listdir(data_dir):
         if 'W3058' in data_dir and filename.endswith(".txt") and int(filename.split("_")[0]) > 0:
@@ -133,7 +137,7 @@ def plot_scans(data_dir, curr_type, max_res=0.01, min_temp=0, bd_thresh=0.5):
             color = temperature_to_color(temp)
             # Plot pad current and store data for later sorting
             neg_idx = data[curr_type] < 0
-            if 'W' in data_dir and curr_type != 'totalCurrent': 
+            if 'DC' in data_dir and curr_type != 'totalCurrent': 
                 plots.append((abs(data['voltage'][~neg_idx]), data[curr_type][~neg_idx], temp, color))
             else: plots.append((abs(data['voltage'][neg_idx]), -1*data[curr_type][neg_idx], temp, color))
         # Sort by temperature (numerical order)
@@ -155,12 +159,11 @@ def plot_scans(data_dir, curr_type, max_res=0.01, min_temp=0, bd_thresh=0.5):
         plt.clf()
         if curr_type != 'pad': continue
         breakdown = dict()
-        color_dict = {'nonlinear': 'black', 'random': 'purple'}
         #sigma_breakdown = dict()
         if 'W3045' in data_dir: depletion=50
         else: depletion=36
         for volt, curr, temp, color in plots:
-            if temp < min_temp and 'W' not in data_dir: continue
+            if temp < min_temp and 'DC' not in data_dir: continue
             #elif temp == 60 and 'W3045' in data_dir and ramp_type == 'ru_' and date == '26/09/2023': continue
             #elif temp == 80 and 'W3045' in data_dir and ramp_type == 'ru_' and date == '26/09/2023': continue
             elif temp <= -20 and 'W3058' in data_dir and ramp_type == 'rd_' and date == '27/10/2023': continue
@@ -171,41 +174,42 @@ def plot_scans(data_dir, curr_type, max_res=0.01, min_temp=0, bd_thresh=0.5):
             elif temp < -20 and 'W3058' in data_dir and date == '30/10/2023': continue
             log_curr = np.log10(curr)
             # identify start point for baseline regression
-            base_start_idx = -1
             if temp == -20 and 'W3058' in data_dir and ramp_type == 'rd_' and date == '27/10/2023': temp_depletion = 66
             elif temp == -20 and 'W3058' in data_dir and ramp_type == 'rd_' and date == '30/10/2023': temp_depletion = 70
             else: temp_depletion = depletion
             for v_idx, voltage in enumerate(volt):
-                if base_start_idx == -1 and voltage >= temp_depletion:
+                if voltage >= temp_depletion:
                     base_start_idx = v_idx
-                elif voltage >= 70:
-                    base_end_idx = v_idx
                     break
             print('performing fit for', date, ramp_type, temp)
             plot_filename = data_dir+"/"+f"{ramp_type.strip('_')}_"+str(temp)+"_breakdown.png"
             dist_file = data_dir+"/"+f"{ramp_type.strip('_')}_"+str(temp)+"_bd_dist.png"
+            # select treshold above fit that denotes breakdown
             if not isinstance(bd_thresh, float):
                 if 'W3058' in data_dir: sensor_threshold = bd_thresh['W3058']
                 elif 'W3045' in data_dir: sensor_threshold = bd_thresh['W3045']
                 else: sensor_threshold = bd_thresh['AC']
             else: sensor_threshold = bd_thresh
-            results = fit_breakdown(volt, log_curr, base_start_idx, base_end_idx, max_res=max_res, dist_file=dist_file, bd_thresh=sensor_threshold)
-            # plot
+            # fit the breakdown
+            results = fit_breakdown(volt, log_curr, base_start_idx, dist_file=dist_file, bd_thresh=sensor_threshold)
             breakdown[temp] = dict()
+            # plot
             plt.figure(figsize=(10, 6))
             plt.plot(volt[1:], log_curr[1:], label=f"{temp} C", color=color, marker='o', markersize=3)
             plotted_random = False
             for key, result in results.items():
-                breakdown[temp][key] = result['bd']
-                breakdown[temp][key+'err'] = result['bderr']
-                if 'color' in result:
+                if key == 'random':
+                    # store breakdown voltage and uncertainty for further analysis
+                    breakdown[temp][key] = result['bd']
+                    breakdown[temp][key+'err'] = result['bderr']
+                    # plot actual breakdown fit
                     plt.plot(result['x'], result['y'], color=result['color'], linestyle='--', label='linear fit')
                     plt.plot(result['x'], result['y']+sensor_threshold, color='brown', linestyle='-.', label='threshold')
                     plt.scatter([result['bd']], [result['y'][result['bdi']]], color=result['color'], marker='*')
-                else:
-                    if plotted_random:
+                else: # plot some of the random samples to visualize
+                    if plotted_random: # plot without label
                         plt.plot(result['x'], result['y'], color='purple', linestyle=':')
-                    else:
+                    else: # plot with label once
                         plt.plot(result['x'], result['y'], color='purple', linestyle=':', label='random samples')
                         plotted_random = True
                     plt.scatter([result['bd']], [result['y'][result['bdi']]], color='purple', marker='*')
@@ -222,21 +226,18 @@ def plot_scans(data_dir, curr_type, max_res=0.01, min_temp=0, bd_thresh=0.5):
             plt.clf()
         # get aggregate data for plotting
         plt.figure(figsize=(10, 6))
-        for key, color in color_dict.items():
-            if key != 'random': continue
-            temperatures, breakdown_vs, breakdown_errs = [], [], []
-            for temp, bd_voltage in breakdown.items():
-                temperatures.append(temp)
-                breakdown_vs.append(bd_voltage[key])
-                breakdown_errs.append(bd_voltage[key+'err'])
-            temperatures = np.array(temperatures)
-            breakdown_vs = np.array(breakdown_vs)
-            #sig_breakdown_vs = np.array(sig_breakdown_vs)
-            popt, perr, _, r2 = linear_fit(temperatures, breakdown_vs, [1,150], sigmas=breakdown_errs)
-            #plt.scatter(temperatures, breakdown_vs, label=key, color=color)
-            plt.errorbar(temperatures, breakdown_vs, yerr=breakdown_errs, fmt='o', capsize=5, label=key, color=color)
-            plt.plot(temperatures, linear(temperatures, popt[0], popt[1]), label=f'r2 value: {r2:0.2f} Best Fit: y = {popt[0]:.2f}x + { popt[1]:.2f}', color=color, linestyle='--')
-
+        temperatures, breakdown_vs, breakdown_errs = [], [], []
+        for temp, bd_voltage in breakdown.items():
+            temperatures.append(temp)
+            breakdown_vs.append(bd_voltage['random'])
+            breakdown_errs.append(bd_voltage['randomerr'])
+        temperatures = np.array(temperatures)
+        breakdown_vs = np.array(breakdown_vs)
+        #sig_breakdown_vs = np.array(sig_breakdown_vs)
+        popt, perr, _, r2 = linear_fit(temperatures, breakdown_vs, [1,150], sigmas=breakdown_errs)
+        #plt.scatter(temperatures, breakdown_vs, label=key, color="purple")
+        plt.errorbar(temperatures, breakdown_vs, yerr=breakdown_errs, fmt='o', capsize=5, label=key, color="black")
+        plt.plot(temperatures, linear(temperatures, popt[0], popt[1]), label=f'r2 value: {r2:0.2f} Best Fit: y = {popt[0]:.2f}x + { popt[1]:.2f}', color='purple', linestyle='--')
         plt.xlabel("Temperature (C)")
         plt.ylabel("Breakdown Voltage (V)")
         plt.title("Breakdown Voltage as a Function of Temperature")
@@ -258,10 +259,9 @@ def plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor):
     # get the data and store in dictionary
     for i, data_dir in enumerate(data_dirs):
         print(sensor, data_dir)
-        if sensor == 'AC': 
-            if 'W' in data_dir: continue
+        if sensor == 'AC_3096': 
+            if 'DC' in data_dir: continue
         elif sensor not in data_dir: continue
-
         for ramp_type, ramp_temp in temps[i].items():
             #if ramp_type == 'rd_': continue
             ramp_bdv = breakdown_volts[i][ramp_type]
@@ -288,11 +288,11 @@ def plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor):
     plt.figure(figsize=(10, 6))
 
     for temp, bdvs in means.items():
-        if temp == -20 and sensor == 'W3058': scan_idx = np.array([0,1,2,3,4,6,7,8,9,10,11,12,13,14,15])
-        elif temp == -40 and sensor == 'W3058': scan_idx = np.array([0,2,4,8,9,10,11,12,13,14,15])
-        elif temp == -60 and sensor == 'W3058': scan_idx = np.array([0,8,9,10,11,12,13,14,15])
-        elif temp == 80 and sensor == 'W3058': scan_idx = np.array([0,1,2,3,5,6,7,8,9,10,11,12,13,14,15])
-        elif temp == 40 and sensor == 'W3058': scan_idx = np.array([0,1,2,3,4,5,6,7,9,10,11,12,13,14,15])
+        if temp == -20 and sensor == 'DC_W3058': scan_idx = np.array([0,1,2,3,4,6,7,8,9,10,11,12,13,14,15])
+        elif temp == -40 and sensor == 'DC_W3058': scan_idx = np.array([0,2,4,8,9,10,11,12,13,14,15])
+        elif temp == -60 and sensor == 'DC_W3058': scan_idx = np.array([0,8,9,10,11,12,13,14,15])
+        elif temp == 80 and sensor == 'DC_W3058': scan_idx = np.array([0,1,2,3,5,6,7,8,9,10,11,12,13,14,15])
+        elif temp == 40 and sensor == 'DC_W3058': scan_idx = np.array([0,1,2,3,4,5,6,7,9,10,11,12,13,14,15])
         else: scan_idx = np.arange(len(bdvs))
         plt.plot(scan_idx, bdvs, marker='o', color=temperature_to_color(temp), label=str(temp)+" C")
     plt.xlabel("Scan Number")
@@ -341,15 +341,15 @@ def plot_all(data_dirs, max_res=0.01, min_temp=0, bd_thresh=0.5):
     temps, breakdown_volts, breakdown_sigs = [], [], []
     for data_directory in data_dirs:
         data_dir = 'data/'+data_directory
-        temp, bdv, bdverr = plot_scans(data_dir, 'pad', max_res=max_res, min_temp=min_temp, bd_thresh=bd_thresh)
+        temp, bdv, bdverr = plot_scans(data_dir, 'pad', min_temp=min_temp, bd_thresh=bd_thresh)
         temps.append(temp)
         breakdown_volts.append(bdv)
         breakdown_sigs.append(bdverr)
         plot_scans(data_dir, 'gr')
         plot_scans(data_dir, 'totalCurrent')
-    ac_slope_err, ac_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='AC')
-    w3058_slope_err, w3058_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='W3058')
-    w3045_slope_err, w3045_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='W3045')
+    ac_slope_err, ac_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='AC_3096')
+    w3058_slope_err, w3058_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='DC_W3058')
+    w3045_slope_err, w3045_avg_sigma = plot_sensor(data_dirs, temps, breakdown_volts, breakdown_sigs, sensor='DC_W3045')
     return [ac_slope_err, w3058_slope_err, w3045_slope_err]#, [ac_avg_sigma, w3058_avg_sigma, w3045_avg_sigma]
 
 def plot_humidity_scans(data_dir, bd_thresh):
@@ -390,9 +390,9 @@ def plot_humidity_scans(data_dir, bd_thresh):
 
 
 def find_threshold(data_dirs, min_temp, bd_thresholds):
-    min_keys = ["AC", "W3058", "W3045"]
-    min_sigma = {"AC": 999, "W3058": 999, "W3045": 999}
-    min_threshold = {"AC": 0, "W3058": 0, "W3045": 0}
+    min_keys = ["AC_W3096", "DC_W3058", "DC_W3045"]
+    min_sigma = {"AC_W3096": 999, "DC_W3058": 999, "DC_W3045": 999}
+    min_threshold = {"AC_W3096": 0, "DC_W3058": 0, "DC_W3045": 0}
     for thresh in bd_thresholds:
         sigmas = plot_all(data_dirs, min_temp=min_temp, bd_thresh=thresh)
         for i, sigma in enumerate(sigmas):
@@ -405,9 +405,9 @@ def find_threshold(data_dirs, min_temp, bd_thresholds):
 
 def run_full(data_dirs, min_temp):
     #thresholds = find_threshold(data_dirs, min_temp, bd_thresholds=np.linspace(.1,0.6,6))
-    thresholds = {"AC": 0.3, "W3058": 0.6, "W3045": 0.4}
+    thresholds = {"AC_W3096": 0.3, "DC_W3058": 0.6, "W3045": 0.4}
     plot_all(data_dirs, min_temp=min_temp, bd_thresh=thresholds)
-    plot_humidity_scans("data/Dec102024", thresholds["AC"])
+    plot_humidity_scans("data/AC_W3096/Dec102024", thresholds["AC_W3096"])
 
 #find_threshold(test_data_dirs, min_temp=60, bd_thresholds=[{"AC": 0.2, "W3058": 0.2, "W3045": 0.2}, 0.5, 0.7])
 run_full(data_dirs, min_temp=0)
